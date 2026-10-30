@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,8 +29,22 @@ jobs:
       - name: Build APKs
         run: gradle assembleDebug assembleRelease --no-daemon
 
-      - name: Upload APKs
+      - name: Upload APKs (Actions artifact)
         uses: actions/upload-artifact@v4
         with:
           name: LGFlashTool-apks
           path: app/build/outputs/apk/**/*.apk
+
+      # Publish the APKs as a GitHub Release too, so they can be downloaded
+      # directly from the repo's Releases page without opening the run.
+      - name: Publish APKs to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest \
+            app/build/outputs/apk/debug/app-debug.apk \
+            app/build/outputs/apk/release/app-release.apk \
+            --title "LG Flash Tool — latest build" \
+            --notes "Automated build from the latest main commit. See the README for usage and warnings. Flash at your own risk." \
+            --prerelease
