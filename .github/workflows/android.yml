@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   build:
@@ -27,9 +28,35 @@ jobs:
           gradle-version: '8.7'
 
       - name: Build APKs
-        run: gradle assembleDebug assembleRelease --no-daemon
+        run: |
+          set -o pipefail
+          gradle assembleDebug assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+
+      # Report the failure log as an issue so the failure cause is visible
+      # without Actions log access.
+      - name: Report build failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "## CI build failed"
+            echo "Commit: \`${GITHUB_SHA}\`"
+            echo ""
+            echo "### Matching lines"
+            echo '```'
+            grep -E "^e: |error:|FAILURE|Could not|What went wrong|Caused by|Exception|\.kt:|Execution failed" build.log | tail -n 60 || true
+            echo '```'
+            echo ""
+            echo "### Last 60 lines of build.log"
+            echo '```'
+            tail -n 60 build.log
+            echo '```'
+          } > failure.md
+          gh issue create --title "CI build failed (${GITHUB_SHA:0:7})" --body-file failure.md || true
 
       - name: Upload APKs (Actions artifact)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: LGFlashTool-apks
@@ -38,6 +65,7 @@ jobs:
       # Publish the APKs as a GitHub Release too, so they can be downloaded
       # directly from the repo's Releases page without opening the run.
       - name: Publish APKs to GitHub Release
+        if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
