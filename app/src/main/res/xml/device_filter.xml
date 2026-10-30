@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LG Electronics (Download Mode / LAF) -->
+    <usb-device vendor-id="4096" />
+    <!-- Qualcomm EDL 9008 / 9006 / 9025 -->
+    <usb-device vendor-id="1478" product-id="36872" />
+    <usb-device vendor-id="1478" product-id="36870" />
+    <usb-device vendor-id="1478" product-id="36901" />
+</resources>

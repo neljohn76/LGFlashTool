@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">LG Flash Tool</string>
+    <string name="no_device">No LG / Qualcomm device detected.\nConnect the target phone in Download Mode (or EDL 9008) with an OTG cable.</string>
+    <string name="connect">Connect</string>
+    <string name="pick_firmware">Pick firmware (KDZ / DZ / img)</string>
+    <string name="pick_programmer">Pick firehose programmer</string>
+    <string name="laf_mode">LAF — Download Mode</string>
+    <string name="edl_mode">EDL — Qualcomm 9008</string>
+    <string name="flash">⚡ FLASH</string>
+    <string name="reboot">Reboot target</string>
+    <string name="power_off">Power off</string>
+    <string name="auto_reboot">Auto-reboot target after flash</string>
+    <string name="allow_low_blocks">Allow flashing GPT / low blocks (dangerous)</string>
+    <string name="firmware_none">No firmware selected</string>
+    <string name="programmer_none">No programmer selected</string>
+    <string name="edl_lun_hint">LUN (UFS partition, usually 0)</string>
+    <string name="edl_start_hint">Start sector (4096-byte sectors)</string>
+    <string name="warning_title">⚠ Flashing can brick the device</string>
+    <string name="warning_body">This tool writes firmware directly to partitions over USB. A wrong file, interrupted transfer or wrong model firmware can leave the phone unbootable (hard brick). Charge the target, do not disconnect the OTG cable, and double-check the firmware model. The authors take no responsibility for damaged devices. Continue?</string>
+    <string name="yes_i_understand">I understand the risk</string>
+    <string name="cancel">Cancel</string>
+</resources>

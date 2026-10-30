@@ -1,0 +1,9 @@
+<resources>
+    <color name="lg_blue">#00A3E0</color>
+    <color name="lg_red">#A50034</color>
+    <color name="bg_dark">#101418</color>
+    <color name="card_bg">#1C222A</color>
+    <color name="text_main">#FFFFFF</color>
+    <color name="text_sub">#9AA5B1</color>
+    <color name="button_flash">#C2185B</color>
+</resources>
