@@ -14,8 +14,8 @@ import com.neljohn76.lgflash.util.Bytes
  */
 object DzParser {
 
-    val FILE_MAGIC = byteArrayOf(0x32, 0x96, 0x18, 0x74)
-    val CHUNK_MAGIC = byteArrayOf(0x30, 0x12, 0x95, 0x78)
+    val FILE_MAGIC = byteArrayOf(0x32, 0x96.toByte(), 0x18, 0x74)
+    val CHUNK_MAGIC = byteArrayOf(0x30, 0x12, 0x95.toByte(), 0x78)
 
     data class DzChunk(
         val index: Int,

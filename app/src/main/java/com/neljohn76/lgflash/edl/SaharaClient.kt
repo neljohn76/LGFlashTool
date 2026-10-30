@@ -7,8 +7,9 @@ class EdlException(message: String) : Exception(message)
 
 /**
  * Qualcomm Sahara protocol (per bkerler/edl, GPLv3).
- * Packets are [cmd:4][len:4][payload...] with little-endian dwords; len
- * includes the 8-byte header.
+ *
+ * Packets: a 4-byte command, a 4-byte length (little-endian, includes the
+ * 8-byte header), then the payload.
  */
 class SaharaClient(
     private val io: BulkTransport,
