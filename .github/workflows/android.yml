@@ -26,6 +26,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.7'
+          # GitHub's enhanced Gradle cache service is currently unavailable.
+          # Disable caching so builds remain able to run and publish artifacts.
+          cache-disabled: true
 
       # Unit tests run first and must pass for the build to continue;
       # everything is tee'd into build.log so the failure report below shows
