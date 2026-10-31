@@ -12,25 +12,58 @@ data class GptPartition(
     val sizeBytes: Long get() = (lastLba - firstLba + 1) * 512
 }
 
-/** Minimal GPT parser over the first 34 LBAs of a disk. */
+/** Result of a strict GPT parse over the first 34 LBAs of a disk. */
+data class GptInfo(
+    val partitions: List<GptPartition>,
+    val firstUsableLba: Long,
+    val lastUsableLba: Long
+)
+
+/**
+ * Minimal GPT parser over the first 34 LBAs of a disk.
+ *
+ * parse() is lenient (empty list when no valid GPT is present) for UI use;
+ * parseInfo() is the strict variant that also validates the header geometry
+ * and exposes the usable LBA range used to bound write targets.
+ */
 object Gpt {
 
-    fun parse(tableBytes: ByteArray): List<GptPartition> {
-        if (tableBytes.size < 34 * 512) return emptyList()
+    fun parse(tableBytes: ByteArray): List<GptPartition> =
+        parseInfo(tableBytes)?.partitions ?: emptyList()
+
+    /** Returns null when the data is not a self-consistent GPT. */
+    fun parseInfo(tableBytes: ByteArray): GptInfo? {
+        if (tableBytes.size < 34 * 512) return null
         val sig = String(tableBytes, 512, 8, Charsets.US_ASCII)
-        if (sig != "EFI PART") return emptyList()
+        if (sig != "EFI PART") return null
 
         val bb = ByteBuffer.wrap(tableBytes).order(ByteOrder.LITTLE_ENDIAN)
-        val entriesStartLba = bb.getLong(512 + 72).toInt()
+        val firstUsableLba = bb.getLong(512 + 40)
+        val lastUsableLba = bb.getLong(512 + 48)
+        val entriesStartLba = bb.getLong(512 + 72)
         val numEntries = bb.getInt(512 + 80)
         val entrySize = bb.getInt(512 + 84)
-        if (entrySize < 128 || entriesStartLba <= 0 || numEntries <= 0) return emptyList()
 
-        val out = ArrayList<GptPartition>(numEntries)
+        // Sanity-check the header geometry; reject nonsense instead of
+        // looping over attacker-controlled counts.
+        if (firstUsableLba < 2 || lastUsableLba < firstUsableLba ||
+            entriesStartLba < 2 || entriesStartLba >= firstUsableLba ||
+            numEntries <= 0 || numEntries > 1024 ||
+            entrySize < 128 || entrySize > 512
+        ) {
+            return null
+        }
+        // The entry array must fit between its start LBA and firstUsableLba.
+        val entriesBytes = numEntries.toLong() * entrySize.toLong()
+        if (entriesBytes > (firstUsableLba - entriesStartLba) * 512) {
+            return null
+        }
+
+        val out = ArrayList<GptPartition>(minOf(numEntries, 128))
         val base = entriesStartLba * 512L
         for (i in 0 until numEntries) {
             val off = (base + i * entrySize.toLong()).toInt()
-            if (off + entrySize > tableBytes.size) break
+            if (off < 0 || off + entrySize > tableBytes.size) break
             // Type GUID all-zero = unused entry
             var allZero = true
             for (j in 0 until 16) {
@@ -42,11 +75,13 @@ object Gpt {
             if (allZero) continue
             val first = bb.getLong(off + 32)
             val last = bb.getLong(off + 40)
+            if (first == 0L && last == 0L) continue
+            // Skip malformed entries rather than presenting bogus targets.
+            if (first < firstUsableLba || first > last || last > lastUsableLba) continue
             val name = String(tableBytes, off + 56, 72, Charsets.UTF_16LE)
                 .trimEnd('\u0000')
-            if (first == 0L && last == 0L) continue
             out.add(GptPartition(i, name, first, last))
         }
-        return out
+        return GptInfo(out, firstUsableLba, lastUsableLba)
     }
 }

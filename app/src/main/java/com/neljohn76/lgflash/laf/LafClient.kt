@@ -1,16 +1,20 @@
 package com.neljohn76.lgflash.laf
 
 import com.neljohn76.lgflash.usb.BulkTransport
+import com.neljohn76.lgflash.util.Bytes
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * High-level LAF operations: HELO handshake, KILO authentication,
+ * High-level LAF operations: KILO authentication, HELO handshake,
  * disk open/read/write/erase, reboot / power-off. Ported from
  * Lekensteyn/lglaf (MIT).
  *
- * NOTE (assumption to validate on hardware): READ/WRTE offsets are in
- * 512-byte blocks, matching the GPT/DZ addressing used everywhere else.
+ * Addressing semantics (verified against lglaf partitions.py):
+ *  - READ/WRTE arg2 is a 512-byte BLOCK offset; the transfer length
+ *    (arg3 / body) is in BYTES. A partial final write at a block-aligned
+ *    offset is accepted by the device (lglaf relies on this).
+ *  - ERSE takes a start sector and a sector count (512-byte sectors).
  */
 class LafClient(
     private val io: BulkTransport,
@@ -44,13 +48,24 @@ class LafClient(
         return true
     }
 
+    /**
+     * KILO challenge/response authentication, exactly as in
+     * lglaf challenge_response(): CENT is sent as header arg1, the device
+     * returns a 4-byte challenge in the response header (bytes 8..11), and
+     * METR (arg1) with the mode (arg3) carries the 16-byte encrypted reply
+     * in the body.
+     */
     fun kilo(): Boolean {
-        val h1 = call(Laf.CMD_KILO, body = "CENT".toByteArray(Charsets.US_ASCII))
-        if (h1.body.size < 16) {
-            throw LafException("KILO challenge too short (${h1.body.size} bytes)")
-        }
-        val response = kiloEncrypt(KILO_KEY, h1.body.copyOf(16))
-        call(Laf.CMD_KILO, body = "METR".toByteArray(Charsets.US_ASCII) + response)
+        val cent = call(Laf.CMD_KILO, arg1 = asciiDword("CENT"))
+        val challenge = ByteArray(4)
+        Bytes.p32(challenge, 0, cent.args[2])
+        val response = kiloEncrypt(KILO_KEY, challenge)
+        call(
+            Laf.CMD_KILO,
+            arg1 = asciiDword("METR"),
+            arg3 = KILO_MODE,
+            body = response
+        )
         log("LAF KILO authentication ok")
         return true
     }
@@ -73,12 +88,20 @@ class LafClient(
         var done = 0
         while (done < size) {
             val n = minOf(Laf.MAX_IO, size - done)
+            val at = blockOffset + done / 512
             val h = call(
                 Laf.CMD_READ,
                 arg1 = fd.toLong(),
-                arg2 = blockOffset + done / 512,
+                arg2 = at,
                 arg3 = n.toLong()
             )
+            // lglaf asserts the response echoes fd / block offset / length.
+            if (h.args[0] != fd.toLong() || h.args[1] != at || h.args[2] != n.toLong()) {
+                throw LafException(
+                    "READ response does not echo the request " +
+                        "(fd=${h.args[0]}/${fd}, block=${h.args[1]}/${at}, len=${h.args[2]}/$n)"
+                )
+            }
             if (h.body.size != n) {
                 throw LafException("READ returned ${h.body.size} bytes, expected $n")
             }
@@ -88,40 +111,63 @@ class LafClient(
         return out
     }
 
-    /** Writes data starting at blockOffset (512-byte blocks), MAX_IO at a time. */
+    /**
+     * Writes data starting at blockOffset (512-byte blocks), MAX_IO at a
+     * time. Callers must start each call at a block boundary (data of an
+     * arbitrary length is fine; only the START offset is block-granular).
+     */
     fun write(fd: Int, blockOffset: Long, data: ByteArray) {
         var done = 0
         while (done < data.size) {
             val n = minOf(Laf.MAX_IO, data.size - done)
-            call(
+            val at = blockOffset + done / 512
+            val h = call(
                 Laf.CMD_WRTE,
                 arg1 = fd.toLong(),
-                arg2 = blockOffset + done / 512,
+                arg2 = at,
                 arg3 = n.toLong(),
                 body = data.copyOfRange(done, done + n)
             )
+            // lglaf asserts the response reports the byte offset back.
+            val expectedByteOffset = (at * 512) and 0xFFFFFFFFL
+            if (h.args[0] != fd.toLong() || h.args[1] != expectedByteOffset) {
+                throw LafException(
+                    "WRTE response reports fd=${h.args[0]}, byte offset ${h.args[1]} " +
+                        "(expected fd=$fd, byte offset $expectedByteOffset) - data may have " +
+                        "landed at the wrong address; aborting."
+                )
+            }
             done += n
         }
     }
 
-    /** Erases count sectors starting at startSector. */
+    /** Erases count sectors starting at startSector (512-byte sectors). */
     fun erase(fd: Int, startSector: Long, count: Long) {
-        call(Laf.CMD_ERSE, arg1 = fd.toLong(), arg2 = startSector, arg3 = count, arg4 = 0)
+        val h = call(Laf.CMD_ERSE, arg1 = fd.toLong(), arg2 = startSector, arg3 = count, arg4 = 0)
+        if (h.args[0] != fd.toLong() || h.args[1] != startSector || h.args[2] != count) {
+            throw LafException(
+                "ERSE response does not echo the request " +
+                    "(fd=${h.args[0]}/${fd}, start=${h.args[1]}/${startSector}, " +
+                    "count=${h.args[2]}/${count})"
+            )
+        }
     }
 
     fun reboot() {
-        call(Laf.CMD_CTRL, arg1 = ctrlArg("RSET"))
+        call(Laf.CMD_CTRL, arg1 = asciiDword("RSET"))
     }
 
     fun powerOff() {
-        call(Laf.CMD_CTRL, arg1 = ctrlArg("POFF"))
+        call(Laf.CMD_CTRL, arg1 = asciiDword("POFF"))
     }
 
     /** Reads the first 34 LBAs (protective MBR + GPT + partition entries). */
     fun readGptTable(fd: Int): ByteArray = read(fd, 0, 34 * 512)
 
-    private fun ctrlArg(name: String): Long {
+    /** 4 ASCII bytes as a little-endian dword (e.g. "CENT" for header args). */
+    private fun asciiDword(name: String): Long {
         val b = name.toByteArray(Charsets.US_ASCII)
+        require(b.size == 4)
         var v = 0L
         for (i in 3 downTo 0) v = (v shl 8) or (b[i].toLong() and 0xFF)
         return v
@@ -131,21 +177,51 @@ class LafClient(
         private val KILO_KEY =
             "qndiakxxuiemdklseqid~a~niq,zjuxl".toByteArray(Charsets.US_ASCII)
 
+        /** lglaf uses mode 2 for the METR reply. */
+        const val KILO_MODE = 2L
+
         /**
-         * KILO challenge/response: derive the AES-256-ECB key from the static
-         * secret, XOR it with the big-endian challenge, encrypt 0x00..0x0F.
+         * KILO key transform, byte-for-byte as lglaf laf_crypto.key_transform:
+         * for x = 32 downTo 1, byte (key[x-1] - (x % 12)) is APPENDED, so the
+         * result is the reversed key. (Verified against lglaf tests:
+         * "qndiakxxuiemdklseqid~a~niq,zjuxl" -> "dqoev)ohnsWu\bk`oiicmZ_lpqe\ealp")
          */
-        fun kiloEncrypt(key0: ByteArray, challenge: ByteArray): ByteArray {
-            require(key0.size == 32)
-            val key = key0.copyOf()
+        fun kiloKeyTransform(key0: ByteArray): ByteArray {
+            require(key0.size == 32) { "KILO key must be 32 bytes" }
+            val out = ByteArray(32)
             for (x in 32 downTo 1) {
-                key[x - 1] = ((key[x - 1] - (x % 12).toByte().toInt()) and 0xFF).toByte()
+                out[32 - x] = (((key0[x - 1].toInt() and 0xFF) - (x % 12)) and 0xFF).toByte()
             }
-            for (i in 0 until 32) {
-                key[i] = (key[i].toInt() xor challenge[i % 16].toInt()).toByte()
+            return out
+        }
+
+        /**
+         * Group-wise XOR of the transformed key with the 32-bit
+         * big-endian challenge, as lglaf laf_crypto.xor_key.
+         */
+        fun kiloXorKey(transformedKey: ByteArray, challenge4: ByteArray): ByteArray {
+            require(transformedKey.size == 32) { "Transformed key must be 32 bytes" }
+            require(challenge4.size == 4) { "Challenge must be 4 bytes" }
+            var challenge = 0L
+            for (b in challenge4) challenge = (challenge shl 8) or (b.toLong() and 0xFF)
+            val out = ByteArray(32)
+            for (g in 0 until 8) {
+                val k = Bytes.u32(transformedKey, g * 4)
+                Bytes.p32(out, g * 4, k xor challenge)
             }
+            return out
+        }
+
+        /**
+         * Full KILO response: transform the static key, XOR it with the
+         * 4-byte big-endian challenge, AES-256-ECB-encrypt 0x00..0x0F.
+         * (Verified against lglaf tests: challenge f2 9a e1 30 ->
+         * 2f47ca81ebeee6f414263c0542c8d132)
+         */
+        fun kiloEncrypt(key0: ByteArray, challenge4: ByteArray): ByteArray {
+            val xoredKey = kiloXorKey(kiloKeyTransform(key0), challenge4)
             val cipher = Cipher.getInstance("AES/ECB/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"))
+            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(xoredKey, "AES"))
             return cipher.doFinal(ByteArray(16) { i -> i.toByte() })
         }
     }
