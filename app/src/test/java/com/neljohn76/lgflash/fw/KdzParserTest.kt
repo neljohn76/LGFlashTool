@@ -60,7 +60,7 @@ class KdzParserTest {
         assertEquals(2, entries.size)
         assertEquals("rooted.dz", entries[0].name)
         assertEquals(100L, entries[0].length)
-        assertEquals(b.size - 100, entries[0].offset)
+        assertEquals((b.size - 100).toLong(), entries[0].offset)
         assertEquals("totinfo.tot", entries[1].name)
     }
 

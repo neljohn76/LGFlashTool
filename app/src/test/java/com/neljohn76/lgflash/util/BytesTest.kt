@@ -11,7 +11,7 @@ class BytesTest {
         assertEquals(0x1234, Bytes.u16(b, 0))
         assertEquals(0x5678, Bytes.u16(b, 2))
         assertEquals(0x56781234L, Bytes.u32(b, 0))
-        assertEquals(0xAB_CDEF_5678_1234L, Bytes.u64(b, 0))
+        assertEquals(0x89AB_CDEF_5678_1234UL.toLong(), Bytes.u64(b, 0))
     }
 
     @Test
@@ -23,7 +23,7 @@ class BytesTest {
         assertEquals(0xBE.toByte(), b[1])
         assertEquals(0xAD.toByte(), b[2])
         assertEquals(0xDE.toByte(), b[3])
-        assertEquals(0x04, b[4])
+        assertEquals(0x04.toByte(), b[4])
         assertEquals(0xDEADBEEFL, Bytes.u32(b, 0))
     }
 

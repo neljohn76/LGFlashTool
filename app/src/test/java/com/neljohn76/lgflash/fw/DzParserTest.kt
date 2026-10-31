@@ -107,7 +107,7 @@ class DzParserTest {
 
         val c1 = dz.chunks[1]
         assertEquals(12345L, c1.targetAddr)
-        assertEquals(512L + 2 * 512L, c1.dataOffset) // data starts after the table
+        assertEquals(c0.dataOffset + c0.dataSize, c1.dataOffset)
     }
 
     @Test
@@ -132,7 +132,7 @@ class DzParserTest {
     @Test
     fun rejectsChunkDataPastEndOfFile() {
         val b = build(ChunkSpec("s", "n", ByteArray(10), 34))
-        Bytes.p32(b, 104, 100000) // lie about the first chunk's data size
+        Bytes.p32(b, 512 + 104, 100000) // lie about the first chunk's data size
         assertThrows(IllegalArgumentException::class.java) {
             DzParser.parse(ArraySource(b))
         }
