@@ -30,7 +30,8 @@ class KdzParserTest {
         out.write(magic)
         // write each entry, separated by 0x03, final terminator 0x00
         for (i in entries.indices) {
-            val (name, (len, off)) = entries[i]
+            val (name, values) = entries[i]
+            val (len, off) = values
             out.write(entry(name, len, off))
             out.write(if (i < entries.size - 1) 0x03 else 0x00)
         }
@@ -78,7 +79,7 @@ class KdzParserTest {
     fun rejectsEntryBeyondFileSize() {
         val b = buildKdz("rooted.dz" to Pair(100L, 0L))
         // point the entry far past the end of the file
-        Bytes.p32(b, 8 + 264, b.size + 5000)
+        Bytes.p32(b, 8 + 264, (b.size + 5000).toLong())
         assertThrows(IllegalArgumentException::class.java) {
             KdzParser.parse(ArraySource(b))
         }

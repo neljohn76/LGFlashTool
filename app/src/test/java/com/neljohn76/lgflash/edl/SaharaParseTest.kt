@@ -51,9 +51,10 @@ class SaharaParseTest {
 
     @Test
     fun parsesReadData64_highImageId() {
-        val p = payload(0xDEAD_BEEF_CAFE_0001L, 0L, 4096L)
+        val highImageId = -2401053089206501375L
+        val p = payload(highImageId, 0L, 4096L)
         val (id, off, len) = SaharaClient.parseReadRequest(SaharaClient.READ_DATA_64, p)
-        assertEquals(0xDEAD_BEEF_CAFE_0001L, id)
+        assertEquals(highImageId, id)
         assertEquals(0L, off)
         assertEquals(4096L, len)
     }

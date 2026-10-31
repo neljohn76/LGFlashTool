@@ -30,7 +30,7 @@ class BytesTest {
     @Test
     fun cstr_readsUntilNul() {
         val b = ByteArray(16)
-        "boot\0xyz".toByteArray(Charsets.US_ASCII).copyInto(b, 0)
+        "boot\u0000xyz".toByteArray(Charsets.US_ASCII).copyInto(b, 0)
         assertEquals("boot", Bytes.cstr(b, 0, 16))
         // NUL not found within the window: stops at the window end
         val full = "ABCDEFGHIJKLMNOP".toByteArray(Charsets.US_ASCII)

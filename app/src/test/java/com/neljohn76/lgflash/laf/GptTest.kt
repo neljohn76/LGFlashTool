@@ -22,8 +22,8 @@ class GptTest {
         writeU64(t, 512 + 40, firstUsable)          // first usable LBA
         writeU64(t, 512 + 48, lastUsable)           // last usable LBA
         writeU64(t, 512 + 72, 2)                    // entries start LBA
-        Bytes.p32(t, 512 + 80, entries)             // num entries
-        Bytes.p32(t, 512 + 84, entrySize)           // entry size
+        Bytes.p32(t, 512 + 80, entries.toLong())    // num entries
+        Bytes.p32(t, 512 + 84, entrySize.toLong())  // entry size
         return t
     }
 
