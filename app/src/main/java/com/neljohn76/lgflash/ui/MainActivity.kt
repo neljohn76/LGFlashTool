@@ -436,7 +436,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     val details = "Target partition: ${target.name} " +
                         "(LBA ${target.firstLba}..${target.lastLba}, " +
-                        Bytes.formatBytes(target.sizeBytes)), image " +
+                        Bytes.formatBytes(target.sizeBytes) + "), image " +
                         Bytes.formatBytes(fw.source.size()) + "."
                     confirmThen(details) { flashLafRaw(fw, target.name, autoReboot) }
                 }
