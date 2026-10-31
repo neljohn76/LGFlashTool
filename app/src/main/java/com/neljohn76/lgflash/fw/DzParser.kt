@@ -17,6 +17,9 @@ object DzParser {
     val FILE_MAGIC = byteArrayOf(0x32, 0x96.toByte(), 0x18, 0x74)
     val CHUNK_MAGIC = byteArrayOf(0x30, 0x12, 0x95.toByte(), 0x78)
 
+    /** Real DZ files contain a few hundred chunks; anything beyond this is corrupt. */
+    const val MAX_CHUNKS = 16384
+
     data class DzChunk(
         val index: Int,
         val sliceName: String,
@@ -29,9 +32,7 @@ object DzParser {
         val dev: Long,
         val crc32: Long,
         val dataOffset: Long
-    ) {
-        val targetSizeBytes: Long get() = targetSize
-    }
+    )
 
     data class DzFile(
         val device: String,
@@ -52,10 +53,11 @@ object DzParser {
         val device = Bytes.cstr(header, 16, 32)
         val version = Bytes.cstr(header, 48, 144)
         val chunkCount = Bytes.u32(header, 192).toInt()
-        if (chunkCount < 0 || chunkCount > 100000) {
+        if (chunkCount < 0 || chunkCount > MAX_CHUNKS) {
             throw IllegalArgumentException("Implausible chunk count: $chunkCount")
         }
 
+        val totalSize = input.size()
         val chunks = ArrayList<DzChunk>(chunkCount)
         var dataPtr = 512L + chunkCount * 512L
         for (i in 0 until chunkCount) {
@@ -77,6 +79,14 @@ object DzParser {
                     targetAddr, trimCount, dev, crc32, dataPtr)
             )
             dataPtr += dataSize
+            // Reject headers that point past the end of the file immediately,
+            // before any flashing starts.
+            if (dataPtr < 0 || dataPtr > totalSize) {
+                throw IllegalArgumentException(
+                    "Chunk $i (${sliceName}/${chunkName}) data runs past the end of the " +
+                        "file (ends at $dataPtr, file size $totalSize) - corrupt DZ file"
+                )
+            }
         }
         return DzFile(device, version, chunks)
     }

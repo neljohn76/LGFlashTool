@@ -2,15 +2,18 @@ package com.neljohn76.lgflash.usb
 
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
+import android.hardware.usb.UsbInterface
 import java.io.IOException
 
 /**
- * Thread-safe wrapper over one USB bulk IN/OUT endpoint pair.
- * All operations are serialized with a lock: the protocol layers expect
- * strict request/response ordering.
+ * Thread-safe wrapper over one USB bulk IN/OUT endpoint pair on a claimed
+ * interface. All operations are serialized with a lock: the protocol layers
+ * expect strict request/response ordering. close() releases the interface
+ * and the connection.
  */
 class BulkTransport(
     private val conn: UsbDeviceConnection,
+    private val intf: UsbInterface,
     private val epIn: UsbEndpoint,
     private val epOut: UsbEndpoint
 ) : AutoCloseable {
@@ -54,6 +57,10 @@ class BulkTransport(
 
     override fun close() {
         synchronized(lock) {
+            try {
+                conn.releaseInterface(intf)
+            } catch (_: Exception) {
+            }
             conn.close()
         }
     }

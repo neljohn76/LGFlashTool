@@ -7,6 +7,7 @@ import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
+import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.util.Log
@@ -15,6 +16,13 @@ import java.io.IOException
 /**
  * Finds LG (Download Mode) / Qualcomm (EDL) devices, asks the user for USB
  * permission and opens a bulk-pair transport.
+ *
+ * Device identification: download-mode PIDs vary per LG model (lglaf's udev
+ * rules list 633e, 627f, 6298, 633a, 6000, ...), so LAF matching cannot use
+ * a single VID:PID pair. Instead a LAF candidate is an LG-VID device exposing
+ * an interface with EXACTLY two bulk endpoints and nothing else - MTP-mode
+ * phones (same vendor ID) carry an additional interrupt endpoint and are
+ * thereby excluded.
  */
 class UsbHelper(private val context: Context) {
 
@@ -31,10 +39,36 @@ class UsbHelper(private val context: Context) {
     fun find(): List<UsbDevice> =
         usbManager.deviceList.values.filter { isLaf(it) || isEdl(it) }
 
-    fun isLaf(d: UsbDevice): Boolean = d.vendorId == LG_VID
+    fun isLaf(d: UsbDevice): Boolean =
+        d.vendorId == LG_VID && bulkOnlyInterface(d) != null
 
     fun isEdl(d: UsbDevice): Boolean =
         d.vendorId == QCOM_VID && EDL_PIDS.contains(d.productId)
+
+    /**
+     * The interface with exactly two bulk endpoints (one IN, one OUT) and no
+     * other endpoints, or null. This is the shape of the LAF download-mode
+     * interface; MTP/PTP interfaces have a third (interrupt) endpoint.
+     */
+    private fun bulkOnlyInterface(d: UsbDevice): UsbInterface? {
+        for (i in 0 until d.interfaceCount) {
+            val intf = d.getInterface(i)
+            if (intf.endpointCount != 2) continue
+            var epIn: UsbEndpoint? = null
+            var epOut: UsbEndpoint? = null
+            var others = 0
+            for (j in 0 until intf.endpointCount) {
+                val ep = intf.getEndpoint(j)
+                if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
+                    if (ep.direction == UsbConstants.USB_DIR_IN) epIn = ep else epOut = ep
+                } else {
+                    others++
+                }
+            }
+            if (epIn != null && epOut != null && others == 0) return intf
+        }
+        return null
+    }
 
     fun hasPermission(d: UsbDevice): Boolean = usbManager.hasPermission(d)
 
@@ -49,27 +83,57 @@ class UsbHelper(private val context: Context) {
         String.format("%04x:%04x", d.vendorId, d.productId) +
             " " + (d.productName ?: "LG device")
 
-    /** Opens the first bulk IN/OUT endpoint pair and returns a transport. */
+    /**
+     * Opens a bulk IN/OUT endpoint pair and claims the interface (bulk
+     * transfers are not valid on an unclaimed interface). The transport
+     * releases the interface again on close().
+     */
     fun open(d: UsbDevice): BulkTransport {
         val conn: UsbDeviceConnection =
             usbManager.openDevice(d) ?: throw IOException("Cannot open USB device")
-        for (i in 0 until d.interfaceCount) {
-            val intf = d.getInterface(i)
+        try {
+            // Prefer the strict two-bulk-endpoint interface, then fall back
+            // to any interface that has a bulk pair (EDL programmers vary).
+            val preferred = bulkOnlyInterface(d)
+            var target: UsbInterface? = null
             var epIn: UsbEndpoint? = null
             var epOut: UsbEndpoint? = null
-            for (j in 0 until intf.endpointCount) {
-                val ep = intf.getEndpoint(j)
-                if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
-                    if (ep.direction == UsbConstants.USB_DIR_IN) epIn = ep else epOut = ep
+            for (pass in 0 until 2) {
+                for (i in 0 until d.interfaceCount) {
+                    val intf = d.getInterface(i)
+                    if (pass == 0 && intf != preferred) continue
+                    if (pass == 1 && intf == preferred) continue
+                    var in1: UsbEndpoint? = null
+                    var out1: UsbEndpoint? = null
+                    for (j in 0 until intf.endpointCount) {
+                        val ep = intf.getEndpoint(j)
+                        if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
+                            if (ep.direction == UsbConstants.USB_DIR_IN) in1 = ep else out1 = ep
+                        }
+                    }
+                    if (in1 != null && out1 != null) {
+                        target = intf
+                        epIn = in1
+                        epOut = out1
+                        break
+                    }
                 }
+                if (target != null) break
             }
-            if (epIn != null && epOut != null) {
-                return BulkTransport(conn, epIn, epOut)
+            if (target == null || epIn == null || epOut == null) {
+                throw IOException("Device has no bulk endpoints (not in Download/EDL mode?)")
             }
+            if (!conn.claimInterface(target, true)) {
+                throw IOException("Cannot claim USB interface ${target.id} of ${describe(d)}")
+            }
+            return BulkTransport(conn, target, epIn, epOut)
+        } catch (e: Exception) {
+            try {
+                conn.close()
+            } catch (_: Exception) {
+            }
+            throw e
         }
-        conn.close()
-        Log.w(TAG, "No bulk endpoints on ${describe(d)}")
-        throw IOException("Device has no bulk endpoints (not in Download/EDL mode?)")
     }
 }
 

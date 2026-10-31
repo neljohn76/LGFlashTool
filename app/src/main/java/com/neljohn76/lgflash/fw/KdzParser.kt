@@ -13,6 +13,9 @@ import com.neljohn76.lgflash.util.Bytes
  */
 object KdzParser {
 
+    /** A sane upper bound on the number of embedded files. */
+    const val MAX_ENTRIES = 4096
+
     data class KdzEntry(val name: String, val length: Long, val offset: Long)
 
     val MAGICS = listOf(
@@ -27,24 +30,38 @@ object KdzParser {
     }
 
     fun parse(input: ByteSource): List<KdzEntry> {
+        val totalSize = input.size()
         val entries = ArrayList<KdzEntry>()
         var pos = 8L
         var cont = true
         var last = false
         while (cont) {
+            if (entries.size >= MAX_ENTRIES) {
+                throw IllegalArgumentException(
+                    "KDZ entry table exceeds ${MAX_ENTRIES} entries - corrupt file"
+                )
+            }
             val e = input.readAt(pos, 272)
             pos += 272
             val name = Bytes.cstr(e, 0, 256)
             val length = Bytes.u64(e, 256)
             val offset = Bytes.u64(e, 264)
             entries.add(KdzEntry(name, length, offset))
+            // Validate the entry range against the actual file size
+            // (overflow-safe: length > size - offset <=> beyond the file).
+            if (offset < 0 || length < 0 || offset > totalSize || length > totalSize - offset) {
+                throw IllegalArgumentException(
+                    "KDZ entry '$name' points outside the file " +
+                        "(offset $offset + length $length, file size $totalSize)"
+                )
+            }
             cont = !last
             val t = input.readAt(pos, 1)[0]
             pos += 1
             when {
                 t == 0x03.toByte() -> last = true   // one more footer entry follows
                 t == 0x00.toByte() -> cont = false  // end of table
-                else -> pos -= 1                    // no separator, next entry directly
+                else -> pos -= 1                     // no separator, next entry directly
             }
         }
         return entries

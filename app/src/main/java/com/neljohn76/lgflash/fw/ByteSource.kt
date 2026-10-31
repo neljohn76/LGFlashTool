@@ -56,8 +56,11 @@ class SubSource(
 
 /**
  * Inflates a zlib-compressed region (zlib-wrapped KDZ payloads) once, then
- * serves random access over the result. Prefers a temp file in the app cache
- * dir (payloads can be multiple GB); falls back to memory if unavailable.
+ * serves random access over the result. Inflates to a temp file in the app
+ * cache dir (payloads can be multiple GB). The in-memory fallback is only
+ * used for small payloads: a compressed region above
+ * [MAX_MEMORY_INFLATE_BYTES] fails with a clear error instead of taking
+ * the app down with an OutOfMemoryError.
  */
 class InflatedSource(
     private val parent: ByteSource,
@@ -68,6 +71,11 @@ class InflatedSource(
     private val onProgress: (Long, Long) -> Unit
 ) : ByteSource {
 
+    companion object {
+        /** Compressed-size cap for the in-memory fallback (~256 MiB). */
+        const val MAX_MEMORY_INFLATE_BYTES = 256L * 1024 * 1024
+    }
+
     private var memory: ByteArray? = null
     private var file: RandomAccessFile? = null
     private var total = -1L
@@ -76,14 +84,31 @@ class InflatedSource(
     private fun ensureInflated() {
         synchronized(lock) {
             if (total >= 0) return
-            val input = SourceInputStream(parent, base, length)
-            val zin = InflaterInputStream(input)
             val tmp: File? = try {
-                cacheDir?.let { File.createTempFile("kdz_dz_", ".tmp", it) }
+                cacheDir?.let {
+                    val free = it.usableSpace
+                    if (free in 1 until 128L * 1024 * 1024) {
+                        log("Warning: only ${free / (1024 * 1024)} MB free in the cache dir; " +
+                            "inflating a multi-GB payload will likely fail.")
+                    }
+                    File.createTempFile("kdz_dz_", ".tmp", it)
+                }
             } catch (e: IOException) {
-                log("Temp file unavailable (${e.message}); inflating to memory instead")
+                log("Temp file unavailable (${e.message})")
                 null
             }
+            if (tmp == null) {
+                if (length > MAX_MEMORY_INFLATE_BYTES) {
+                    throw IOException(
+                        "Payload is ${length / (1024 * 1024)} MB compressed - too large to " +
+                            "inflate in memory and no cache dir is available. Free up storage " +
+                            "or extract the .dz file on another device."
+                    )
+                }
+                log("No cache dir; inflating ${length} bytes in memory")
+            }
+            val input = SourceInputStream(parent, base, length)
+            val zin = InflaterInputStream(input)
             val buf = ByteArray(256 * 1024)
             var done = 0L
             if (tmp != null) {
@@ -102,16 +127,29 @@ class InflatedSource(
                     log("Inflated payload to ${total} bytes on disk")
                 } catch (e: IOException) {
                     log("Disk inflate failed (${e.message}); retrying in memory")
+                    try { zin.close() } catch (_: Exception) {}
+                    try { input.close() } catch (_: Exception) {}
                     tmp.delete()
-                    inflateToMemory(zin, input)
+                    inflateToMemory()
+                } finally {
+                    try { zin.close() } catch (_: Exception) {}
+                    try { input.close() } catch (_: Exception) {}
                 }
             } else {
-                inflateToMemory(zin, input)
+                inflateToMemory()
             }
         }
     }
 
-    private fun inflateToMemory(zin: InflaterInputStream, input: SourceInputStream) {
+    private fun inflateToMemory() {
+        if (length > MAX_MEMORY_INFLATE_BYTES) {
+            throw IOException(
+                "Disk inflate failed and the ${length / (1024 * 1024)} MB payload is too " +
+                    "large to inflate in memory."
+            )
+        }
+        val input = SourceInputStream(parent, base, length)
+        val zin = InflaterInputStream(input)
         try {
             val bos = ByteArrayOutputStream()
             val buf = ByteArray(256 * 1024)
