@@ -27,10 +27,13 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Build APKs
+      # Unit tests run first and must pass for the build to continue;
+      # everything is tee'd into build.log so the failure report below shows
+      # both test and compile failures.
+      - name: Test and build
         run: |
           set -o pipefail
-          gradle assembleDebug assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+          gradle testDebugUnitTest assembleDebug assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
 
       # Report the failure log as an issue so the failure cause is visible
       # without Actions log access.
@@ -45,7 +48,7 @@ jobs:
             echo ""
             echo "### Matching lines"
             echo '```'
-            grep -E "^e: |error:|FAILURE|Could not|What went wrong|Caused by|Exception|\.kt:|Execution failed" build.log | tail -n 60 || true
+            grep -E "^e: |error:|FAILURE|Could not|What went wrong|Caused by|Exception|\.kt:|Execution failed|tests completed" build.log | tail -n 60 || true
             echo '```'
             echo ""
             echo "### Last 60 lines of build.log"
@@ -74,5 +77,5 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk \
             app/build/outputs/apk/release/app-release.apk \
             --title "LG Flash Tool — latest build" \
-            --notes "Automated build from the latest main commit. See the README for usage and warnings. Flash at your own risk." \
+            --notes "Automated build from the latest main commit. Unit tests passed in CI. See the README for usage and warnings. Flash at your own risk." \
             --prerelease

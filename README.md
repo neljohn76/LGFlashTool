@@ -13,19 +13,32 @@ and write it. This is the LG equivalent of [ErosFlashTool](https://github.com/Ga
 
 - **LAF / LG Download Mode** — talks LG's LAF (LG Automated Flash) protocol directly over USB host,
   the same protocol LGUP / LG Flash Tool use on a PC:
-  - HELO handshake with the AES-256-ECB challenge/response (`KILO CENT/METR`) authentication
-  - Opens the raw disk and streams firmware at absolute block addresses
+  - `KILO CENT/METR` AES-256-ECB challenge/response authentication (ported byte-for-byte from
+    lglaf's `laf_crypto.py` and covered by that project's official test vectors)
+  - HELO handshake, opens the raw disk and streams firmware at absolute block addresses
+  - Writes are always **512-byte block aligned**; READ/WRTE/ERSE responses are verified against
+    the request (fd / offset / length echo, as lglaf asserts)
   - Reads the live GPT so you can pick a partition by name for raw images
   - Reboot / power-off controls (`CTRL RSET` / `CTRL POFF`)
-- **Qualcomm EDL (9008)** — full Sahara handshake and firehose programmer upload, then raw
-  sector programming to any LUN (UFS) or eMMC.
+- **Qualcomm EDL (9008)** — full Sahara handshake (including 64-bit `READ_DATA_64` requests) and
+  firehose programmer upload, then raw sector programming to any LUN. The storage sector size is
+  taken from the firehose configure result (UFS 4096 / eMMC 512) and overridden by
+  `getstorageinfo` when the programmer reports it; write ranges are checked against the reported
+  capacity when available. **EDL mode supports raw images only** (no KDZ/DZ).
 - **Firmware formats**
   - `.kdz` — LG's container; the embedded `.dz` payload is extracted (including zlib-wrapped variants)
-  - `.dz` — LG's firmware archive; chunks are inflated, **MD5- and CRC32-verified** as they stream
-  - raw `.img` / `.bin` — written to a partition you select from the device's GPT
+  - `.dz` — LG's firmware archive; **every selected chunk is fully decompressed and MD5/CRC32-verified
+    BEFORE anything is erased or written**, then streamed with per-chunk hash verification again
+  - raw `.img` / `.bin` — written to a partition you select from the device's GPT (size-checked
+    against the partition)
   - `.tot` / BIN-style KDZ payloads are **not** supported yet
-- Per-chunk progress with live speed, safety guard against writing the GPT area (blocks < 34)
-  unless explicitly allowed, and a detailed on-device log.
+- **Safety guards**
+  - Pre-flash integrity pass (decompress + verify all chunks before the first erase)
+  - Chunk targets bounded by the device GPT's last usable LBA when the GPT is readable
+  - GPT area (blocks < 34) requires an explicit opt-in, matching lglaf's own sanity check
+  - Parser hardening: KDZ/DZ headers are bounds-checked against the real file size, entry and
+    chunk counts are capped, and the KDZ zlib-inflate path refuses multi-GB in-memory fallbacks
+  - The confirmation dialog shows the exact target (blocks / partition / LUN + sector)
 
 ## Requirements
 
@@ -42,12 +55,13 @@ and write it. This is the LG equivalent of [ErosFlashTool](https://github.com/Ga
 The project builds itself in the cloud:
 
 1. Go to the **Actions** tab of this repository.
-2. Wait for the latest workflow run (triggered on every push) to finish.
+2. Wait for the latest workflow run (triggered on every push) to finish — it also runs the
+   unit test suite.
 3. Download the **`LGFlashTool-apks`** artifact and unzip it — it contains both
    `app-debug.apk` and the signed `app-release.apk`.
 4. Sideload the APK on your phone.
 
-To build locally: open the project in Android Studio, or run `./gradlew assembleDebug`.
+To build locally: open the project in Android Studio, or run `./gradlew testDebugUnitTest assembleDebug`.
 
 ## How to use
 
@@ -57,6 +71,7 @@ To build locally: open the project in Android Studio, or run `./gradlew assemble
 2. In the app, choose **LAF**, tap **Connect** — the GPT partition list is read and logged.
 3. Tap **Pick firmware** and select your KDZ/DZ. All chunks are listed and pre-checked.
 4. Review the chunks (you can deselect, e.g. leave out `userdata`), press **FLASH**, confirm.
+   The firmware is verified first; only then does the write phase start.
 5. Optionally enable auto-reboot so the target restarts when done.
 
 ### EDL mode (for bricked/unresponsive devices)
@@ -64,21 +79,32 @@ To build locally: open the project in Android Studio, or run `./gradlew assemble
 1. Get the target into EDL 9008 (test point or button combo) and connect via OTG.
 2. Choose **EDL**, tap **Connect** — the Sahara HELLO is read automatically.
 3. Tap **Pick programmer** and select your firehose `.mbn`/`.elf`.
-4. Pick a raw image file, set the LUN and start sector, press **FLASH**.
+4. Pick a **raw image file** (KDZ/DZ is not supported in EDL mode), set the LUN and start
+   sector, press **FLASH**.
 
 ## Status / validation
 
 The LAF protocol implementation is a faithful port of the reverse-engineered protocol from
 [Lekensteyn/lglaf](https://github.com/Lekensteyn/lglaf) (MIT), the KDZ/DZ parsing follows
 [ehem/kdztools](https://github.com/ehem/kdztools) (GPLv3), and EDL follows
-[bkerler/edl](https://github.com/bkerler/edl) (GPLv3). The code paths have **not yet been
-hardware-validated end-to-end** — the first flash on a real device should be done deliberately,
-with the correct model firmware and a full backup mindset. Notable assumptions:
+[bkerler/edl](https://github.com/bkerler/edl) (GPLv3). The protocol handling is covered by JVM
+unit tests (LAF framing/CRC/KILO vectors, GPT parsing, KDZ/DZ synthetic fixtures, Sahara packet
+framing, block-aligned write buffering) which run in CI on every push. **The code paths have
+not yet been hardware-validated end-to-end** — the first flash on a real device should be done
+deliberately, with the correct model firmware and a full backup mindset. Remaining
+hardware-dependent assumptions:
 
 - DZ `targetAddr` is treated as an absolute 512-byte block index (per kdztools).
-- LAF READ/WRTE offsets are in 512-byte blocks, and writes use 16 KiB max bodies
-  (31 × 512 bytes per command, as in lglaf).
-- Firehose programming assumes 4096-byte sectors for UFS LUNs.
+- LAF addressing (block offsets, byte lengths, sector erase) follows lglaf's implementation
+  exactly, but has not been exercised against a physical download-mode device by this project.
+- Firehose sector size defaults to 4096 (UFS) / 512 (eMMC) unless `getstorageinfo` reports one.
+
+## Release signing
+
+The published APKs are signed with the **debug key** so they can be sideloaded immediately.
+This is a development build, not a production-signed release: Android will not verify a
+publisher identity for it. To produce a production-signed build, create your own keystore and
+point `signingConfig` at it (see the Android docs on signing).
 
 ## How it works
 
@@ -89,9 +115,9 @@ with the correct model firmware and a full backup mindset. Notable assumptions:
  │  (app)   │   LAF protocol     │  Download Mode      │
  └──────────┘   or Sahara+Firehose  └─────────────────────┘
       │
-      │ KDZ → DZ → zlib chunks (streamed, MD5/CRC verified)
+      │ KDZ → DZ → zlib chunks (verify first, then stream, MD5/CRC verified)
       ▼
-  GPT-aware block writer
+  GPT-aware block-aligned writer
 ```
 
 ## Credits & license

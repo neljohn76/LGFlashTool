@@ -18,7 +18,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the CI artifact can be sideloaded directly.
+            // Signed with the debug key so the CI artifact can be sideloaded
+            // directly. This is a DEVELOPMENT build: it is not signed with a
+            // production/release key, so Android will show the "unknown
+            // developer" identity. See README ("Release signing").
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -38,4 +41,6 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    testImplementation("junit:junit:4.13.2")
 }
