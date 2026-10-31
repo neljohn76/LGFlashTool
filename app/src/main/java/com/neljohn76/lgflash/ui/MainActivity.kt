@@ -320,8 +320,9 @@ class MainActivity : AppCompatActivity() {
         transport = t
         if (isLafMode()) {
             val client = LafClient(t, ::log)
-            client.tryHello()
+            // lglaf order: KILO challenge/response first, then HELO.
             client.kilo()
+            client.tryHello()
             lafClient = client
             val parts = LafFlashEngine(client, ::log).readPartitionTable()
             partitions = parts
@@ -380,10 +381,10 @@ class MainActivity : AppCompatActivity() {
         log("Firehose programmer loaded (${bytes.size} bytes)")
     }
 
-    private fun confirmThen(action: () -> Unit) {
+    private fun confirmThen(details: String, action: () -> Unit) {
         AlertDialog.Builder(this)
             .setTitle(R.string.warning_title)
-            .setMessage(R.string.warning_body)
+            .setMessage(getString(R.string.warning_body).toString() + "\n\n" + details)
             .setPositiveButton(R.string.yes_i_understand) { _, _ -> action() }
             .setNegativeButton(R.string.cancel, null)
             .show()
@@ -413,7 +414,14 @@ class MainActivity : AppCompatActivity() {
                         return
                     }
                     val allowLow = chkAllowLowBlocks.isChecked
-                    confirmThen { flashLafDz(fw, selected, allowLow, autoReboot) }
+                    val chunks = fw.dz.chunks.filter { selected.contains(it.index) }
+                    val total = chunks.sumOf { it.targetSize }
+                    val minBlock = chunks.minOf { it.targetAddr }
+                    val maxBlock = chunks.maxOf { it.targetAddr + (it.targetSize + 511) / 512 - 1 }
+                    val details = "Target: the whole disk (LG Download Mode).\n" +
+                        "${chunks.size} chunks, blocks $minBlock..$maxBlock, " +
+                        Bytes.formatBytes(total) + " total."
+                    confirmThen(details) { flashLafDz(fw, selected, allowLow, autoReboot) }
                 }
                 is Firmware.Raw -> {
                     val targetId = adapter.checkedIds().firstOrNull()
@@ -426,17 +434,36 @@ class MainActivity : AppCompatActivity() {
                         toast("Target partition unknown - reconnect the device")
                         return
                     }
-                    confirmThen { flashLafRaw(fw, target.name, autoReboot) }
+                    val details = "Target partition: ${target.name} " +
+                        "(LBA ${target.firstLba}..${target.lastLba}, " +
+                        Bytes.formatBytes(target.sizeBytes)), image " +
+                        Bytes.formatBytes(fw.source.size()) + "."
+                    confirmThen(details) { flashLafRaw(fw, target.name, autoReboot) }
                 }
             }
         } else {
+            // EDL mode supports raw images only; refuse anything else
+            // before asking for confirmation or touching the device.
+            if (fw !is Firmware.Raw) {
+                toast("EDL mode supports raw images only")
+                log("EDL mode only programs raw images. KDZ/DZ firmware requires " +
+                    "LAF (Download Mode).")
+                return
+            }
             val prog = programmer ?: run {
                 toast("Select a firehose programmer first")
                 return
             }
             val lun = editLun.text.toString().toIntOrNull() ?: 0
             val start = editStartSector.text.toString().toLongOrNull() ?: 0L
-            confirmThen { flashEdl(prog, fw, lun, start, autoReboot) }
+            if (lun < 0 || start < 0) {
+                toast("LUN and start sector must be zero or positive")
+                return
+            }
+            val details = "Target: LUN $lun starting at sector $start, raw image " +
+                Bytes.formatBytes(fw.source.size()) + ".\nWrong LUN/sector values can " +
+                "hard-brick the device."
+            confirmThen(details) { flashEdl(prog, fw, lun, start, autoReboot) }
         }
     }
 
@@ -448,7 +475,13 @@ class MainActivity : AppCompatActivity() {
     ) = runIo {
         val client = lafClient ?: throw IllegalStateException("Not connected")
         val engine = LafFlashEngine(client, ::log)
-        mainHandler.post { tvProgress.text = "Flashing..." }
+        mainHandler.post { tvProgress.text = "Verifying firmware (before any write)..." }
+        // Integrity pass FIRST: nothing is erased or written before every
+        // selected chunk has been decompressed and hash-verified.
+        engine.verifyDzChunks(fw.source, fw.dz, selected) { d, t ->
+            setProgress(d, t)
+        }
+        log("Verification passed - starting the write phase.")
         engine.flashDzChunks(fw.source, fw.dz, selected, allowLowBlocks) { d, t ->
             setProgress(d, t)
         }
@@ -473,7 +506,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun flashEdl(
         prog: ByteArray,
-        fw: Firmware,
+        fw: Firmware.Raw,
         lun: Int,
         startSector: Long,
         autoReboot: Boolean
@@ -485,13 +518,10 @@ class MainActivity : AppCompatActivity() {
         if (!engine.configure()) {
             throw RuntimeException("Firehose configure failed - wrong or incompatible programmer?")
         }
-        if (fw is Firmware.Raw) {
-            log("Programming raw image to LUN $lun at sector $startSector (4096-byte sectors)")
-            engine.programRaw(fw.source, lun, startSector) { d, total -> setProgress(d, total) }
-            log("FLASH COMPLETE")
-        } else {
-            log("Programmer is live. To write an image in EDL mode, select a raw .img/.bin as the firmware file.")
-        }
+        log("Programming raw image to LUN $lun at sector $startSector " +
+            "(${engine.sectorSize}-byte sectors)")
+        engine.programRaw(fw.source, lun, startSector) { d, total -> setProgress(d, total) }
+        log("FLASH COMPLETE")
         if (autoReboot) {
             engine.powerReset()
             log("Firehose power reset sent")
