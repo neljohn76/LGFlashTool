@@ -58,14 +58,32 @@ class GptTest {
     }
 
     @Test
-    fun skipsUnusedAndOutOfRangeEntries() {
+    fun skipsUnusedEntries() {
         val t = newTable(entries = 4, entrySize = 128, lastUsable = 500)
         addEntry(t, 0, 34, 100, "ok")
-        addEntry(t, 1, 34, 600, "beyond-last-usable") // out of range -> skipped
         addEntry(t, 2, 0, 0, "unused")                // zero LBAs -> skipped
         // entry 3: all-zero type GUID (never written) -> unused
         val parts = Gpt.parse(t)
         assertEquals(listOf("ok"), parts.map { it.name })
+    }
+
+    @Test
+    fun rejectsEntryArrayNotFullyPresentInReadBuffer() {
+        val t = newTable(4, 128, 1000)
+        Bytes.p32(t, 512 + 80, 1024)
+        assertNull(Gpt.parseInfo(t))
+    }
+
+    @Test
+    fun rejectsMalformedAndOverlappingUsedEntries() {
+        var t = newTable(4, 128, 1000)
+        addEntry(t, 0, 34, 100, "first")
+        addEntry(t, 1, 90, 120, "overlap")
+        assertNull(Gpt.parseInfo(t))
+
+        t = newTable(4, 128, 1000)
+        addEntry(t, 0, 34, 1001, "past-end")
+        assertNull(Gpt.parseInfo(t))
     }
 
     @Test

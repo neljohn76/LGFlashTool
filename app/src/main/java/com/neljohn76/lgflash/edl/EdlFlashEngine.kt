@@ -78,12 +78,26 @@ class EdlFlashEngine(
         val fh = firehose ?: throw EdlException("Upload a firehose programmer first")
         if (sectorSize <= 0) throw EdlException("configure() must succeed before programming")
         val total = source.size()
-        val numSectors = (total + sectorSize - 1) / sectorSize
-        val capacity = reportedNumSectors
-        if (capacity != null && startSector + numSectors > capacity) {
+        val numSectors = ((total - 1) / sectorSize) + 1
+        // Capacity is LUN-specific. Do not authorize a non-zero LUN using
+        // geometry queried from LUN 0.
+        val lunInfo = if (lun == 0 && reportedNumSectors != null) {
+            FirehoseClient.StorageInfo(sectorSize, reportedNumSectors)
+        } else {
+            fh.getStorageInfo(lun)
+        }
+        val reportedSectorSize = lunInfo?.sectorSize
+        if (reportedSectorSize != null && reportedSectorSize != sectorSize) {
+            throw EdlException(
+                "LUN $lun reports $reportedSectorSize-byte sectors, " +
+                    "but the configured geometry is $sectorSize bytes"
+            )
+        }
+        val capacity = lunInfo?.numSectors
+        if (capacity != null && (startSector > capacity || numSectors > capacity - startSector)) {
             throw EdlException(
                 "Requested write ($numSectors sectors at $startSector) exceeds the " +
-                    "reported storage capacity ($capacity sectors on LUN 0). Refusing."
+                    "reported storage capacity ($capacity sectors on LUN $lun). Refusing."
             )
         }
         fh.programRaw(source, lun, startSector, sectorSize, onProgress)

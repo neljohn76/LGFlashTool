@@ -53,17 +53,24 @@ object Gpt {
         ) {
             return null
         }
-        // The entry array must fit between its start LBA and firstUsableLba.
+        // The entry array must fit between its start LBA and firstUsableLba,
+        // and must be fully contained in the bytes we actually read.
         val entriesBytes = numEntries.toLong() * entrySize.toLong()
-        if (entriesBytes > (firstUsableLba - entriesStartLba) * 512) {
+        val entriesSectors = (entriesBytes + 511) / 512
+        if (entriesSectors > firstUsableLba - entriesStartLba ||
+            lastUsableLba > Long.MAX_VALUE / 512 ||
+            entriesStartLba > Long.MAX_VALUE - entriesSectors ||
+            entriesStartLba + entriesSectors > tableBytes.size / 512L
+        ) {
             return null
         }
 
         val out = ArrayList<GptPartition>(minOf(numEntries, 128))
         val base = entriesStartLba * 512L
+        val ranges = ArrayList<LongRange>()
         for (i in 0 until numEntries) {
             val off = (base + i * entrySize.toLong()).toInt()
-            if (off < 0 || off + entrySize > tableBytes.size) break
+            if (off < 0 || off > tableBytes.size - entrySize) return null
             // Type GUID all-zero = unused entry
             var allZero = true
             for (j in 0 until 16) {
@@ -76,8 +83,12 @@ object Gpt {
             val first = bb.getLong(off + 32)
             val last = bb.getLong(off + 40)
             if (first == 0L && last == 0L) continue
-            // Skip malformed entries rather than presenting bogus targets.
-            if (first < firstUsableLba || first > last || last > lastUsableLba) continue
+            // Reject malformed entries rather than presenting a partial GPT
+            // whose remaining ranges could be mistaken for safe targets.
+            if (first < firstUsableLba || first > last || last > lastUsableLba) return null
+            val range = first..last
+            if (ranges.any { it.first <= range.last && range.first <= it.last }) return null
+            ranges.add(range)
             val name = String(tableBytes, off + 56, 72, Charsets.UTF_16LE)
                 .trimEnd('\u0000')
             out.add(GptPartition(i, name, first, last))

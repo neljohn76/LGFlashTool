@@ -26,6 +26,19 @@ class FirehoseClient(
     /** Best-effort storage geometry (present only if the programmer supports getstorageinfo). */
     data class StorageInfo(val sectorSize: Long?, val numSectors: Long?)
 
+    companion object {
+        /** Keep every non-final raw data packet sector-aligned. */
+        fun alignedPayloadSize(maxPayload: Int, sectorSize: Long): Int {
+            require(maxPayload > 0) { "maxPayload must be positive" }
+            require(sectorSize > 0 && sectorSize <= maxPayload) {
+                "sector size $sectorSize does not fit in a $maxPayload-byte payload"
+            }
+            val aligned = maxPayload - (maxPayload % sectorSize.toInt())
+            require(aligned > 0) { "sector size $sectorSize leaves no usable payload" }
+            return aligned
+        }
+    }
+
     /** Accumulates bytes until an ACK/NAK response arrives. */
     fun readResponse(timeoutMs: Int = 60000): Pair<String, Boolean> {
         val sb = StringBuilder()
@@ -111,7 +124,12 @@ class FirehoseClient(
         if (sectorSize <= 0) throw EdlException("Invalid sector size $sectorSize")
         val total = source.size()
         if (total <= 0) throw EdlException("Image is empty")
-        val numSectors = (total + sectorSize - 1) / sectorSize
+        val alignedPayload = try {
+            alignedPayloadSize(maxPayload, sectorSize)
+        } catch (e: IllegalArgumentException) {
+            throw EdlException(e.message ?: "Invalid sector geometry")
+        }
+        val numSectors = ((total - 1) / sectorSize) + 1
         if (numSectors > Long.MAX_VALUE - startSector) {
             throw EdlException("start sector + image size overflows the address range")
         }
@@ -128,7 +146,9 @@ class FirehoseClient(
         // Raw data stream, then the final ACK.
         var done = 0L
         while (done < total) {
-            val n = minOf(maxPayload.toLong(), total - done).toInt()
+            // Padding a non-final packet would shift every following byte on
+            // the target. Only the final packet may be partial and padded.
+            val n = minOf(alignedPayload.toLong(), total - done).toInt()
             var piece = source.readAt(done, n)
             if (piece.size % sectorSize != 0L) {
                 val padded = (piece.size / sectorSize + 1) * sectorSize
