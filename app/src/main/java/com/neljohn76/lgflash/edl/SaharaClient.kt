@@ -10,6 +10,10 @@ class EdlException(message: String) : Exception(message)
  *
  * Packets: a 4-byte command, a 4-byte length (little-endian, includes the
  * 8-byte header), then the payload.
+ *
+ * Wire formats verified against edlclient/Library/sahara_defs.py:
+ *  - READ_DATA  (0x03): payload = [u32 image_id][u32 data_offset][u32 data_len]
+ *  - READ_DATA_64 (0x12): payload = [u64 image_id][u64 data_offset][u64 data_len]
  */
 class SaharaClient(
     private val io: BulkTransport,
@@ -47,6 +51,27 @@ class SaharaClient(
         )
 
         fun errorName(status: Long): String = ERROR_NAMES[status] ?: "status $status"
+
+        /**
+         * Parses a device READ_DATA / READ_DATA_64 request payload (i.e. the
+         * packet bytes after the 8-byte cmd/len header).
+         * Returns (imageId, offset, length).
+         */
+        fun parseReadRequest(cmd: Long, payload: ByteArray): Triple<Long, Long, Long> {
+            if (cmd == READ_DATA) {
+                if (payload.size < 12) {
+                    throw EdlException("READ_DATA payload too short (${payload.size} bytes)")
+                }
+                return Triple(Bytes.u32(payload, 0), Bytes.u32(payload, 4), Bytes.u32(payload, 8))
+            }
+            if (cmd == READ_DATA_64) {
+                if (payload.size < 24) {
+                    throw EdlException("READ_DATA_64 payload too short (${payload.size} bytes)")
+                }
+                return Triple(Bytes.u64(payload, 0), Bytes.u64(payload, 8), Bytes.u64(payload, 16))
+            }
+            throw EdlException("Not a read request: 0x" + java.lang.Long.toHexString(cmd))
+        }
     }
 
     data class HelloInfo(
@@ -130,19 +155,9 @@ class SaharaClient(
             val (cmd, payload) = readPacket(60000)
             when (cmd) {
                 READ_DATA, READ_DATA_64 -> {
-                    val imageId: Long
-                    val offset: Long
-                    val length: Long
-                    if (cmd == READ_DATA) {
-                        imageId = Bytes.u32(payload, 0)
-                        offset = Bytes.u32(payload, 4)
-                        length = Bytes.u32(payload, 8)
-                    } else {
-                        imageId = Bytes.u64(payload, 8)
-                        offset = Bytes.u64(payload, 16)
-                        length = Bytes.u64(payload, 24)
-                    }
-                    if (offset < 0 || length < 0 || offset + length > total) {
+                    val (imageId, offset, length) = parseReadRequest(cmd, payload)
+                    // Overflow-safe range check against the programmer size.
+                    if (offset < 0 || length < 0 || length > total || offset > total - length) {
                         throw EdlException(
                             "Device requested image range outside the programmer " +
                                 "(id $imageId, $offset+$length of $total)"

@@ -11,6 +11,11 @@ import com.neljohn76.lgflash.usb.BulkTransport
  * device-specific and must be provided by the user. LG devices sometimes ship
  * it inside their KDZ firmware (look for files named "firehose"); otherwise
  * use the one matching the SoC from a trusted source.
+ *
+ * Storage geometry: the sector size is 4096 for UFS and 512 for eMMC
+ * (based on which configure() ACKed), overridden by what getstorageinfo
+ * reports when the programmer supports it. The device capacity, when
+ * reported, bounds the requested write range.
  */
 class EdlFlashEngine(
     private val io: BulkTransport,
@@ -18,6 +23,12 @@ class EdlFlashEngine(
 ) {
     val sahara = SaharaClient(io, log)
     private var firehose: FirehoseClient? = null
+
+    /** Storage sector size in bytes; valid after a successful configure(). */
+    var sectorSize: Long = 0L
+        private set
+
+    private var reportedNumSectors: Long? = null
 
     /** Returns the mode after programmer upload ("firehose" expected). */
     fun uploadProgrammer(
@@ -43,7 +54,19 @@ class EdlFlashEngine(
 
     fun configure(): Boolean {
         val fh = firehose ?: throw EdlException("Upload a firehose programmer first")
-        return fh.configure()
+        val storage = fh.configure()
+            ?: return false
+        // UFS LUNs use 4096-byte sectors, eMMC uses 512-byte sectors.
+        var size = if (storage == "emmc") 512L else 4096L
+        val info = fh.getStorageInfo(0)
+        if (info != null) {
+            if (info.sectorSize != null && info.sectorSize > 0) size = info.sectorSize
+            reportedNumSectors = info.numSectors
+        }
+        sectorSize = size
+        log("EDL storage: $storage, ${size}-byte sectors" +
+            (info?.numSectors?.let { ", $it sectors reported" } ?: ""))
+        return true
     }
 
     fun programRaw(
@@ -53,7 +76,17 @@ class EdlFlashEngine(
         onProgress: (Long, Long) -> Unit
     ) {
         val fh = firehose ?: throw EdlException("Upload a firehose programmer first")
-        fh.programRaw(source, lun, startSector, 4096, onProgress)
+        if (sectorSize <= 0) throw EdlException("configure() must succeed before programming")
+        val total = source.size()
+        val numSectors = (total + sectorSize - 1) / sectorSize
+        val capacity = reportedNumSectors
+        if (capacity != null && startSector + numSectors > capacity) {
+            throw EdlException(
+                "Requested write ($numSectors sectors at $startSector) exceeds the " +
+                    "reported storage capacity ($capacity sectors on LUN 0). Refusing."
+            )
+        }
+        fh.programRaw(source, lun, startSector, sectorSize, onProgress)
     }
 
     fun powerReset(): Boolean {
