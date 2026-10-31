@@ -1,0 +1,7 @@
+<resources>
+    <color name="accent_cyan">#29B6F2</color><color name="accent_amber">#F4B860</color><color name="on_accent">#06131A</color>
+    <color name="bg_dark">#0C1118</color><color name="card_bg">#151D27</color><color name="card_stroke">#2A3948</color>
+    <color name="console_bg">#080D13</color><color name="console_text">#D4E2EE</color><color name="progress_track">#2A3948</color>
+    <color name="text_main">#F2F6FA</color><color name="text_sub">#A6B4C2</color>
+    <color name="lg_blue">#29B6F2</color><color name="lg_red">#A50034</color><color name="button_flash">#29B6F2</color>
+</resources>

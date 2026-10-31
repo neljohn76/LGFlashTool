@@ -1,242 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="12dp">
-
-    <TextView
-        android:id="@+id/toolbar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
-        android:text="⚡ LG Flash Tool"
-        android:textColor="@color/text_main"
-        android:textSize="20sp"
-        android:textStyle="bold" />
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:fillViewport="true">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <!-- Device / connection card -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/card_bg"
-                android:orientation="vertical"
-                android:padding="12dp">
-
-                <TextView
-                    android:id="@+id/tvDeviceStatus"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/no_device"
-                    android:textColor="@color/text_sub"
-                    android:textSize="13sp" />
-
-                <Button
-                    android:id="@+id/btnConnect"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/connect" />
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@color/bg_dark" android:orientation="vertical">
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical" android:paddingStart="20dp" android:paddingTop="18dp"
+        android:paddingEnd="20dp" android:paddingBottom="14dp">
+        <ImageView android:layout_width="42dp" android:layout_height="42dp"
+            android:contentDescription="@string/app_name" android:src="@drawable/lgflash_master" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_marginStart="12dp" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:id="@+id/toolbar" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="LGFlashTool" android:textColor="@color/text_main" android:textSize="22sp" android:textStyle="bold" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Native firmware utility" android:textColor="@color/text_sub" android:textSize="12sp" />
+        </LinearLayout>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:background="@drawable/status_pill" android:paddingHorizontal="10dp" android:paddingVertical="6dp"
+            android:text="v0.1.0" android:textColor="@color/accent_cyan" android:textSize="11sp" android:textStyle="bold" />
+    </LinearLayout>
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:clipToPadding="false" android:fillViewport="true" android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingBottom="24dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/card_bg" android:orientation="vertical" android:padding="18dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TARGET DEVICE" android:textColor="@color/accent_cyan" android:textSize="11sp" android:textStyle="bold" />
+                <TextView android:id="@+id/tvDeviceStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/no_device" android:textColor="@color/text_main" android:textSize="14sp" />
+                <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="@string/connect" android:textAllCaps="false" />
             </LinearLayout>
-
-            <!-- Mode selection -->
-            <RadioGroup
-                android:id="@+id/modeGroup"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:orientation="horizontal">
-
-                <RadioButton
-                    android:id="@+id/radioLaf"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:checked="true"
-                    android:text="@string/laf_mode"
-                    android:textColor="@color/text_main"
-                    android:textSize="13sp" />
-
-                <RadioButton
-                    android:id="@+id/radioEdl"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/edl_mode"
-                    android:textColor="@color/text_main"
-                    android:textSize="13sp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="22dp" android:text="WORKFLOW" android:textColor="@color/text_sub" android:textSize="11sp" android:textStyle="bold" />
+            <RadioGroup android:id="@+id/modeGroup" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/segmented_bg" android:orientation="horizontal" android:padding="4dp">
+                <RadioButton android:id="@+id/radioLaf" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:buttonTint="@color/accent_cyan" android:checked="true" android:gravity="center" android:padding="10dp" android:text="@string/laf_mode" android:textColor="@color/text_main" android:textSize="12sp" />
+                <RadioButton android:id="@+id/radioEdl" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:buttonTint="@color/accent_cyan" android:gravity="center" android:padding="10dp" android:text="@string/edl_mode" android:textColor="@color/text_main" android:textSize="12sp" />
             </RadioGroup>
-
-            <!-- Firmware selection -->
-            <Button
-                android:id="@+id/btnPickFirmware"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="@string/pick_firmware" />
-
-            <TextView
-                android:id="@+id/tvFirmwareInfo"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/firmware_none"
-                android:textColor="@color/text_sub"
-                android:textSize="13sp" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/listItems"
-                android:layout_width="match_parent"
-                android:layout_height="190dp"
-                android:layout_marginTop="4dp" />
-
-            <CheckBox
-                android:id="@+id/chkAllowLowBlocks"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/allow_low_blocks"
-                android:textColor="@color/text_sub"
-                android:textSize="12sp" />
-
-            <!-- EDL options -->
-            <LinearLayout
-                android:id="@+id/cardEdl"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/card_bg"
-                android:orientation="vertical"
-                android:padding="12dp"
-                android:visibility="gone">
-
-                <Button
-                    android:id="@+id/btnPickProgrammer"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/pick_programmer" />
-
-                <TextView
-                    android:id="@+id/tvProgrammer"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/programmer_none"
-                    android:textColor="@color/text_sub"
-                    android:textSize="13sp" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:orientation="horizontal">
-
-                    <EditText
-                        android:id="@+id/editLun"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:hint="@string/edl_lun_hint"
-                        android:inputType="number"
-                        android:text="0"
-                        android:textSize="13sp" />
-
-                    <EditText
-                        android:id="@+id/editStartSector"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:layout_weight="1"
-                        android:hint="@string/edl_start_hint"
-                        android:inputType="number"
-                        android:text="0"
-                        android:textSize="13sp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:background="@drawable/card_bg" android:orientation="vertical" android:padding="18dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="FIRMWARE INPUT" android:textColor="@color/accent_cyan" android:textSize="11sp" android:textStyle="bold" />
+                <Button android:id="@+id/btnPickFirmware" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/pick_firmware" android:textAllCaps="false" />
+                <TextView android:id="@+id/tvFirmwareInfo" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/firmware_none" android:textColor="@color/text_sub" android:textSize="13sp" />
+                <androidx.recyclerview.widget.RecyclerView android:id="@+id/listItems" android:layout_width="match_parent" android:layout_height="190dp" android:layout_marginTop="8dp" />
+                <CheckBox android:id="@+id/chkAllowLowBlocks" android:layout_width="match_parent" android:layout_height="wrap_content" android:buttonTint="@color/accent_amber" android:text="@string/allow_low_blocks" android:textColor="@color/text_sub" android:textSize="12sp" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cardEdl" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:background="@drawable/card_bg" android:orientation="vertical" android:padding="18dp" android:visibility="gone">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="QUALCOMM EDL CONFIGURATION" android:textColor="@color/accent_cyan" android:textSize="11sp" android:textStyle="bold" />
+                <Button android:id="@+id/btnPickProgrammer" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/pick_programmer" android:textAllCaps="false" />
+                <TextView android:id="@+id/tvProgrammer" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/programmer_none" android:textColor="@color/text_sub" android:textSize="13sp" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal">
+                    <EditText android:id="@+id/editLun" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:hint="@string/edl_lun_hint" android:inputType="number" android:text="0" android:textSize="13sp" />
+                    <EditText android:id="@+id/editStartSector" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp" android:layout_weight="1" android:hint="@string/edl_start_hint" android:inputType="number" android:text="0" android:textSize="13sp" />
                 </LinearLayout>
             </LinearLayout>
-
-            <!-- Progress -->
-            <com.google.android.material.progressindicator.LinearProgressIndicator
-                android:id="@+id/progress"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:max="1000" />
-
-            <TextView
-                android:id="@+id/tvProgress"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text=""
-                android:textColor="@color/text_sub"
-                android:textSize="12sp" />
-
-            <CheckBox
-                android:id="@+id/chkAutoReboot"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:checked="true"
-                android:text="@string/auto_reboot"
-                android:textColor="@color/text_sub"
-                android:textSize="12sp" />
-
-            <!-- Actions -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/btnFlash"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="2"
-                    android:backgroundTint="@color/button_flash"
-                    android:text="@string/flash"
-                    android:textColor="@color/text_main" />
-
-                <Button
-                    android:id="@+id/btnReboot"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="6dp"
-                    android:layout_weight="1"
-                    android:text="@string/reboot"
-                    android:textSize="11sp" />
-
-                <Button
-                    android:id="@+id/btnPowerOff"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="6dp"
-                    android:layout_weight="1"
-                    android:text="@string/power_off"
-                    android:textSize="11sp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:background="@drawable/card_bg" android:orientation="vertical" android:padding="18dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="FLASH CONTROL" android:textColor="@color/accent_cyan" android:textSize="11sp" android:textStyle="bold" />
+                <com.google.android.material.progressindicator.LinearProgressIndicator android:id="@+id/progress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:max="1000" app:trackColor="@color/progress_track" app:indicatorColor="@color/accent_cyan" />
+                <TextView android:id="@+id/tvProgress" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textColor="@color/text_sub" android:textSize="12sp" />
+                <CheckBox android:id="@+id/chkAutoReboot" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="@string/auto_reboot" android:textColor="@color/text_sub" android:textSize="12sp" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal">
+                    <Button android:id="@+id/btnFlash" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="2" android:backgroundTint="@color/accent_cyan" android:text="@string/flash" android:textAllCaps="false" android:textColor="@color/on_accent" />
+                    <Button android:id="@+id/btnReboot" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:layout_weight="1" android:text="@string/reboot" android:textAllCaps="false" android:textSize="11sp" />
+                    <Button android:id="@+id/btnPowerOff" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:layout_weight="1" android:text="@string/power_off" android:textAllCaps="false" android:textSize="11sp" />
+                </LinearLayout>
             </LinearLayout>
-
-            <!-- Log -->
-            <ScrollView
-                android:id="@+id/logScroll"
-                android:layout_width="match_parent"
-                android:layout_height="180dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/card_bg">
-
-                <TextView
-                    android:id="@+id/tvLog"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:padding="8dp"
-                    android:textColor="@color/text_sub"
-                    android:textSize="11sp" />
+            <ScrollView android:id="@+id/logScroll" android:layout_width="match_parent" android:layout_height="180dp" android:layout_marginTop="14dp" android:background="@drawable/console_bg">
+                <TextView android:id="@+id/tvLog" android:layout_width="match_parent" android:layout_height="wrap_content" android:fontFamily="monospace" android:padding="16dp" android:textColor="@color/console_text" android:textSize="11sp" />
             </ScrollView>
         </LinearLayout>
     </ScrollView>

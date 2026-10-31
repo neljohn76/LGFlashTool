@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">LGFlashTool mark</title>
+  <desc id="desc">Interlocking graphite and cyan firmware-transfer mark.</desc>
+  <path fill="#273142" d="M92 100 224 20v276l72 42v64l-112-64-92-54z"/>
+  <path fill="#11A8E8" d="m238 132 66-60h156l-34 54H310l-36 30v48l36 30h116l34 54H304l-66-60z"/>
+  <path fill="#11A8E8" d="M266 274h48v92h52l-76 92-76-92h52z"/>
+  <path fill="#273142" d="m92 100 42 26v178l92 54v64l-134-78z" opacity=".96"/>
+</svg>
