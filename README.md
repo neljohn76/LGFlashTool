@@ -33,6 +33,9 @@
 > [!CAUTION]
 > **Flashing firmware can permanently damage a device.** An incorrect model/region firmware, wrong partition or sector, corrupted image, or interrupted write can cause data loss or a hard brick. Confirm the exact device variant and firmware before proceeding. Keep the USB OTG connection stable, maintain sufficient battery, and do not disconnect the target during an active write.
 
+> [!NOTE]
+> **Development status: under development — implementation is currently paused.** The planned Material 3 Expressive UI work and USB/interface-claiming fixes have not been started. The project is waiting for additional reference photos and the owner's explicit instruction to begin implementation. Until then, no feature implementation should be considered started or complete.
+
 ## Overview
 
 LG Flash Tool is an Android application for communicating with LG devices through USB Host / OTG. It implements two device communication paths:
