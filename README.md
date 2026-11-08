@@ -34,7 +34,7 @@
 > **Flashing firmware can permanently damage a device.** An incorrect model/region firmware, wrong partition or sector, corrupted image, or interrupted write can cause data loss or a hard brick. Confirm the exact device variant and firmware before proceeding. Keep the USB OTG connection stable, maintain sufficient battery, and do not disconnect the target during an active write.
 
 > [!NOTE]
-> **Development status: under development — implementation is currently paused.** The planned Material 3 Expressive UI work and USB/interface-claiming fixes have not been started. The project is waiting for additional reference photos and the owner's explicit instruction to begin implementation. Until then, no feature implementation should be considered started or complete.
+> **Development status: under development.** Implementation has started with the supplied LGFlashTool logo, dark dashboard direction, responsive action layout, and preserved LAF/EDL controls. USB interface-claiming fixes and end-to-end physical-device validation remain outstanding. This is not a production-ready flashing tool.
 
 ## Overview
 
