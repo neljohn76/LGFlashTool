@@ -103,6 +103,37 @@ class EdlFlashEngine(
         fh.programRaw(source, lun, startSector, sectorSize, onProgress)
     }
 
+    /**
+     * Erases an explicitly supplied range. The caller must provide verified
+     * userdata geometry; this method never guesses a partition boundary.
+     */
+    fun eraseRange(lun: Int, startSector: Long, numSectors: Long): Boolean {
+        val fh = firehose ?: throw EdlException("Upload a firehose programmer first")
+        if (sectorSize <= 0) throw EdlException("configure() must succeed before erasing")
+        if (lun < 0) throw EdlException("Invalid LUN $lun")
+        if (startSector < 0) throw EdlException("Invalid start sector $startSector")
+        if (numSectors <= 0) throw EdlException("Invalid erase sector count $numSectors")
+        if (startSector > Long.MAX_VALUE - numSectors) {
+            throw EdlException("erase range overflows the address space")
+        }
+        val info = fh.getStorageInfo(lun)
+        val reportedSectorSize = info?.sectorSize
+        if (reportedSectorSize != null && reportedSectorSize != sectorSize) {
+            throw EdlException(
+                "LUN $lun reports $reportedSectorSize-byte sectors, but the configured " +
+                    "geometry is $sectorSize bytes"
+            )
+        }
+        val capacity = info?.numSectors
+        if (capacity != null && (startSector > capacity || numSectors > capacity - startSector)) {
+            throw EdlException(
+                "Requested erase ($numSectors sectors at $startSector) exceeds the " +
+                    "reported capacity ($capacity sectors on LUN $lun). Refusing."
+            )
+        }
+        return fh.erase(lun, startSector, numSectors, sectorSize)
+    }
+
     fun powerReset(): Boolean {
         val fh = firehose ?: throw EdlException("Upload a firehose programmer first")
         return fh.powerReset()

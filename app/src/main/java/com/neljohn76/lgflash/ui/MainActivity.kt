@@ -17,7 +17,6 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
-import android.widget.RadioButton
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -28,6 +27,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.tabs.TabLayout
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.neljohn76.lgflash.R
 import com.neljohn76.lgflash.edl.EdlFlashEngine
@@ -62,6 +62,9 @@ class MainActivity : AppCompatActivity() {
     private var firmwarePfd: ParcelFileDescriptor? = null
     private var firmwareChannel: FileChannel? = null
     private var firmware: Firmware? = null
+    private var edlImagePfd: ParcelFileDescriptor? = null
+    private var edlImageChannel: FileChannel? = null
+    private var edlImage: Firmware.Raw? = null
     private var programmer: ByteArray? = null
     private var partitions: List<GptPartition> = emptyList()
     private var busy = false
@@ -69,17 +72,20 @@ class MainActivity : AppCompatActivity() {
     private var lastProgressBytes = 0L
 
     private lateinit var tvDeviceStatus: TextView
-    private lateinit var tvFirmwareInfo: TextView
+    private lateinit var tvLafFirmwareInfo: TextView
+    private lateinit var tvEdlImageInfo: TextView
     private lateinit var tvProgrammer: TextView
     private lateinit var tvProgress: TextView
     private lateinit var tvLog: TextView
     private lateinit var logScroll: ScrollView
     private lateinit var progressBar: LinearProgressIndicator
-    private lateinit var radioLaf: RadioButton
-    private lateinit var radioEdl: RadioButton
+    private lateinit var workflowTabs: TabLayout
+    private lateinit var cardLaf: View
     private lateinit var cardEdl: View
     private lateinit var editLun: EditText
     private lateinit var editStartSector: EditText
+    private lateinit var editPartitionName: EditText
+    private lateinit var editEraseSectors: EditText
     private lateinit var chkAutoReboot: CheckBox
     private lateinit var chkAllowLowBlocks: CheckBox
     private val adapter = ItemAdapter()
@@ -87,6 +93,11 @@ class MainActivity : AppCompatActivity() {
     private val pickFirmware =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) onFirmwarePicked(uri)
+        }
+
+    private val pickEdlImage =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) onEdlImagePicked(uri)
         }
 
     private val pickProgrammer =
@@ -100,17 +111,20 @@ class MainActivity : AppCompatActivity() {
         usb = UsbHelper(this)
 
         tvDeviceStatus = findViewById(R.id.tvDeviceStatus)
-        tvFirmwareInfo = findViewById(R.id.tvFirmwareInfo)
+        tvLafFirmwareInfo = findViewById(R.id.tvLafFirmwareInfo)
+        tvEdlImageInfo = findViewById(R.id.tvEdlImageInfo)
         tvProgrammer = findViewById(R.id.tvProgrammer)
         tvProgress = findViewById(R.id.tvProgress)
         tvLog = findViewById(R.id.tvLog)
         logScroll = findViewById(R.id.logScroll)
         progressBar = findViewById(R.id.progress)
-        radioLaf = findViewById(R.id.radioLaf)
-        radioEdl = findViewById(R.id.radioEdl)
+        workflowTabs = findViewById(R.id.workflowTabs)
+        cardLaf = findViewById(R.id.cardLaf)
         cardEdl = findViewById(R.id.cardEdl)
         editLun = findViewById(R.id.editLun)
         editStartSector = findViewById(R.id.editStartSector)
+        editPartitionName = findViewById(R.id.editPartitionName)
+        editEraseSectors = findViewById(R.id.editEraseSectors)
         chkAutoReboot = findViewById(R.id.chkAutoReboot)
         chkAllowLowBlocks = findViewById(R.id.chkAllowLowBlocks)
 
@@ -119,22 +133,35 @@ class MainActivity : AppCompatActivity() {
         list.adapter = adapter
 
         findViewById<Button>(R.id.btnConnect).setOnClickListener { connectOrRequest() }
-        findViewById<Button>(R.id.btnPickFirmware).setOnClickListener {
+        findViewById<Button>(R.id.btnPickLafFirmware).setOnClickListener {
             pickFirmware.launch(arrayOf("*/*"))
+        }
+        findViewById<Button>(R.id.btnPickEdlImage).setOnClickListener {
+            pickEdlImage.launch(arrayOf("image/*", "*/*"))
         }
         findViewById<Button>(R.id.btnPickProgrammer).setOnClickListener {
             pickProgrammer.launch(arrayOf("*/*"))
         }
         findViewById<Button>(R.id.btnFlash).setOnClickListener { onFlashClicked() }
+        findViewById<Button>(R.id.btnFlashEdl).setOnClickListener { onEdlFlashClicked() }
+        findViewById<Button>(R.id.btnFactoryReset).setOnClickListener { onFactoryResetClicked() }
         findViewById<Button>(R.id.btnReboot).setOnClickListener { onRebootClicked() }
         findViewById<Button>(R.id.btnPowerOff).setOnClickListener { onPowerOffClicked() }
 
-        val modeGroup = findViewById<android.widget.RadioGroup>(R.id.modeGroup)
-        modeGroup.setOnCheckedChangeListener { _, _ ->
-            cardEdl.visibility = if (radioEdl.isChecked) View.VISIBLE else View.GONE
-            closeTransport()
-            refreshDeviceStatus()
-        }
+        workflowTabs.addTab(workflowTabs.newTab().setText("Download Mode"))
+        workflowTabs.addTab(workflowTabs.newTab().setText("EDL / QFIL"))
+        workflowTabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab) {
+                val edl = tab.position == 1
+                cardLaf.visibility = if (edl) View.GONE else View.VISIBLE
+                cardEdl.visibility = if (edl) View.VISIBLE else View.GONE
+                closeTransport()
+                refreshDeviceStatus()
+            }
+            override fun onTabUnselected(tab: TabLayout.Tab) = Unit
+            override fun onTabReselected(tab: TabLayout.Tab) = Unit
+        })
+        workflowTabs.getTabAt(0)?.select()
 
         log("LG Flash Tool started. Connect the target phone in Download Mode (LAF) or EDL 9008 via OTG.")
         refreshDeviceStatus()
@@ -171,6 +198,7 @@ class MainActivity : AppCompatActivity() {
         closeTransport()
         try {
             firmwarePfd?.close()
+            edlImagePfd?.close()
         } catch (_: Exception) {
         }
     }
@@ -211,7 +239,7 @@ class MainActivity : AppCompatActivity() {
 
     // ---------------------------------------------------------------- helpers
 
-    private fun isLafMode(): Boolean = radioLaf.isChecked
+    private fun isLafMode(): Boolean = workflowTabs.selectedTabPosition == 0
 
     private fun log(msg: String) {
         mainHandler.post {
@@ -357,18 +385,36 @@ class MainActivity : AppCompatActivity() {
         withContext(Dispatchers.Main) {
             when (fw) {
                 is Firmware.Dz -> {
-                    tvFirmwareInfo.text = fw.container + " - " + fw.dz.device + " - " +
+                    tvLafFirmwareInfo.text = fw.container + " - " + fw.dz.device + " - " +
                         fw.dz.version + " - " + fw.dz.chunks.size + " chunks"
                     log("Firmware loaded. Review the chunk list, then press FLASH.")
                 }
                 is Firmware.Raw -> {
-                    tvFirmwareInfo.text = "Raw image: " + fw.fileName + " (" +
+                    tvLafFirmwareInfo.text = "Raw image: " + fw.fileName + " (" +
                         Bytes.formatBytes(fw.source.size()) + ")"
-                    log("Raw image loaded. Connect in LAF mode to list partitions, select a target, then FLASH.")
+                    log("Raw image loaded for LAF. Connect in Download Mode to list partitions, select a target, then FLASH.")
                 }
             }
             refreshRows()
         }
+    }
+
+    private fun onEdlImagePicked(uri: Uri) = runIo {
+        val pfd = contentResolver.openFileDescriptor(uri, "r")
+            ?: throw IllegalArgumentException("Cannot open the selected EDL image")
+        try { edlImagePfd?.close() } catch (_: Exception) { }
+        edlImagePfd = pfd
+        val channel = FileInputStream(pfd.fileDescriptor).channel
+        edlImageChannel = channel
+        val name = uri.lastPathSegment ?: "partition.img"
+        val detected = FirmwareDetect.detect(channel, name, ::log, { d, t -> setProgress(d, t) }, cacheDir)
+        val raw = detected as? Firmware.Raw
+            ?: throw IllegalArgumentException("EDL/QFIL partition operation accepts a raw .img only")
+        edlImage = raw
+        withContext(Dispatchers.Main) {
+            tvEdlImageInfo.text = raw.fileName + " (" + Bytes.formatBytes(raw.source.size()) + ")"
+        }
+        log("EDL partition image loaded. Enter verified LUN/start-sector geometry before programming.")
     }
 
     private fun onProgrammerPicked(uri: Uri) = runIo {
@@ -391,80 +437,58 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onFlashClicked() {
-        if (busy) {
-            toast("Busy")
-            return
-        }
-        val fw = firmware ?: run {
-            toast("Select a firmware file first")
-            return
-        }
+        if (busy) { toast("Busy"); return }
+        if (!isLafMode()) { toast("Open the Download Mode tab for LAF flashing"); return }
+        val fw = firmware ?: run { toast("Select Download Mode firmware first"); return }
+        if (lafClient == null) { toast("Connect the device first"); return }
         val autoReboot = chkAutoReboot.isChecked
-        if (isLafMode()) {
-            val clientReady = lafClient != null
-            if (!clientReady) {
-                toast("Connect the device first")
-                return
+        when (fw) {
+            is Firmware.Dz -> {
+                val selected = adapter.checkedIds()
+                if (selected.isEmpty()) { toast("Select at least one chunk"); return }
+                val allowLow = chkAllowLowBlocks.isChecked
+                val chunks = fw.dz.chunks.filter { selected.contains(it.index) }
+                val total = chunks.sumOf { it.targetSize }
+                val minBlock = chunks.minOf { it.targetAddr }
+                val maxBlock = chunks.maxOf { it.targetAddr + (it.targetSize + 511) / 512 - 1 }
+                val details = "Target: the whole disk (LG Download Mode).\n" + "${chunks.size} chunks, blocks $minBlock..$maxBlock, " + Bytes.formatBytes(total) + " total."
+                confirmThen(details) { flashLafDz(fw, selected, allowLow, autoReboot) }
             }
-            when (fw) {
-                is Firmware.Dz -> {
-                    val selected = adapter.checkedIds()
-                    if (selected.isEmpty()) {
-                        toast("Select at least one chunk")
-                        return
-                    }
-                    val allowLow = chkAllowLowBlocks.isChecked
-                    val chunks = fw.dz.chunks.filter { selected.contains(it.index) }
-                    val total = chunks.sumOf { it.targetSize }
-                    val minBlock = chunks.minOf { it.targetAddr }
-                    val maxBlock = chunks.maxOf { it.targetAddr + (it.targetSize + 511) / 512 - 1 }
-                    val details = "Target: the whole disk (LG Download Mode).\n" +
-                        "${chunks.size} chunks, blocks $minBlock..$maxBlock, " +
-                        Bytes.formatBytes(total) + " total."
-                    confirmThen(details) { flashLafDz(fw, selected, allowLow, autoReboot) }
-                }
-                is Firmware.Raw -> {
-                    val targetId = adapter.checkedIds().firstOrNull()
-                    if (targetId == null) {
-                        toast("Select the target partition")
-                        return
-                    }
-                    val target = partitions.firstOrNull { it.index == targetId }
-                    if (target == null) {
-                        toast("Target partition unknown - reconnect the device")
-                        return
-                    }
-                    val details = "Target partition: ${target.name} " +
-                        "(LBA ${target.firstLba}..${target.lastLba}, " +
-                        Bytes.formatBytes(target.sizeBytes) + "), image " +
-                        Bytes.formatBytes(fw.source.size()) + "."
-                    confirmThen(details) { flashLafRaw(fw, target.name, autoReboot) }
-                }
+            is Firmware.Raw -> {
+                val targetId = adapter.checkedIds().firstOrNull()
+                if (targetId == null) { toast("Select the target partition"); return }
+                val target = partitions.firstOrNull { it.index == targetId }
+                if (target == null) { toast("Target partition unknown - reconnect the device"); return }
+                val details = "Target partition: ${target.name} (LBA ${target.firstLba}..${target.lastLba}, " + Bytes.formatBytes(target.sizeBytes) + "), image " + Bytes.formatBytes(fw.source.size()) + "."
+                confirmThen(details) { flashLafRaw(fw, target.name, autoReboot) }
             }
-        } else {
-            // EDL mode supports raw images only; refuse anything else
-            // before asking for confirmation or touching the device.
-            if (fw !is Firmware.Raw) {
-                toast("EDL mode supports raw images only")
-                log("EDL mode only programs raw images. KDZ/DZ firmware requires " +
-                    "LAF (Download Mode).")
-                return
-            }
-            val prog = programmer ?: run {
-                toast("Select a firehose programmer first")
-                return
-            }
-            val lun = editLun.text.toString().toIntOrNull() ?: 0
-            val start = editStartSector.text.toString().toLongOrNull() ?: 0L
-            if (lun < 0 || start < 0) {
-                toast("LUN and start sector must be zero or positive")
-                return
-            }
-            val details = "Target: LUN $lun starting at sector $start, raw image " +
-                Bytes.formatBytes(fw.source.size()) + ".\nWrong LUN/sector values can " +
-                "hard-brick the device."
-            confirmThen(details) { flashEdl(prog, fw, lun, start, autoReboot) }
         }
+    }
+
+    private fun onEdlFlashClicked() {
+        if (busy) { toast("Busy"); return }
+        if (isLafMode()) { toast("Open the EDL / QFIL tab for EDL operations"); return }
+        val image = edlImage ?: run { toast("Select a raw partition image first"); return }
+        val prog = programmer ?: run { toast("Select a firehose programmer first"); return }
+        val lun = editLun.text.toString().toIntOrNull() ?: 0
+        val start = editStartSector.text.toString().toLongOrNull() ?: -1L
+        if (lun < 0 || start < 0) { toast("LUN and start sector must be zero or positive"); return }
+        val label = editPartitionName.text.toString().trim().ifEmpty { "unnamed partition" }
+        val details = "EDL/QFIL program\nPartition: $label\nLUN $lun, start sector $start\nImage: ${Bytes.formatBytes(image.source.size())}\n\nFirehose geometry and capacity checks run before writing."
+        confirmThen(details) { flashEdl(prog, image, lun, start, chkAutoReboot.isChecked) }
+    }
+
+    private fun onFactoryResetClicked() {
+        if (busy) { toast("Busy"); return }
+        if (isLafMode()) { toast("Factory reset is available only in the EDL / QFIL tab"); return }
+        val prog = programmer ?: run { toast("Select a firehose programmer first"); return }
+        val lun = editLun.text.toString().toIntOrNull() ?: 0
+        val start = editStartSector.text.toString().toLongOrNull() ?: -1L
+        val count = editEraseSectors.text.toString().toLongOrNull() ?: -1L
+        if (lun < 0 || start < 0 || count <= 0) { toast("Enter a valid LUN, userdata start sector, and sector count"); return }
+        if (start > Long.MAX_VALUE - count) { toast("The erase range is too large"); return }
+        val details = "EDL FACTORY RESET\nLUN $lun\nErase range: sectors $start .. ${start + count - 1}\n\nThis permanently erases userdata. Capacity is checked; no partition range is guessed."
+        confirmThen(details) { eraseEdl(prog, lun, start, count) }
     }
 
     private fun flashLafDz(
@@ -526,6 +550,17 @@ class MainActivity : AppCompatActivity() {
             engine.powerReset()
             log("Firehose power reset sent")
         }
+    }
+
+    private fun eraseEdl(prog: ByteArray, lun: Int, startSector: Long, numSectors: Long) = runIo {
+        val t = transport ?: throw IllegalStateException("Not connected")
+        val engine = edlEngine ?: EdlFlashEngine(t, ::log).also { edlEngine = it }
+        log("Uploading firehose programmer for factory reset...")
+        engine.uploadProgrammer(prog) { d, total -> setProgress(d, total) }
+        if (!engine.configure()) throw RuntimeException("Firehose configure failed")
+        log("Erasing verified userdata range on LUN $lun...")
+        if (!engine.eraseRange(lun, startSector, numSectors)) throw RuntimeException("Firehose erase was NAKed")
+        log("EDL FACTORY RESET COMPLETE - userdata range erased")
     }
 
     private fun onRebootClicked() = runIo {

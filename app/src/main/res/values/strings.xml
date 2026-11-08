@@ -19,4 +19,10 @@
     <string name="warning_body">This tool writes firmware directly to partitions over USB. A wrong file, interrupted transfer or wrong model firmware can leave the phone unbootable (hard brick). Charge the target, do not disconnect the OTG cable, and double-check the firmware model. The authors take no responsibility for damaged devices. Continue?</string>
     <string name="yes_i_understand">I understand the risk</string>
     <string name="cancel">Cancel</string>
+    <string name="workflow_tabs">Flashing workflow tabs</string>
+    <string name="pick_edl_image">Pick partition image (.img)</string>
+    <string name="edl_partition_hint">Partition label (for your records)</string>
+    <string name="edl_erase_count_hint">Verified userdata sector count</string>
+    <string name="flash_partition">Program partition image</string>
+    <string name="factory_reset_edl">Erase userdata via EDL</string>
 </resources>
